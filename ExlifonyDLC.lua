@@ -17,15 +17,14 @@ local Workspace = game:GetService("Workspace")
 
 -- Таблица состояний
 local Flags = {
-    Aimbot = false, KillAura = false, Fling = false,
-    BoxEsp = false, Skeleton = false, Tracers = false, ChinaHat = false, TargetEsp = false,
+    Aimbot = false, KillAura = false,
+    BoxEsp = false, Tracers = false, ChinaHat = false, TargetEsp = false,
     Fly = false, Noclip = false, SpeedHack = false, InfJump = false,
     HudActive = false, FullBright = false
 }
 
 local Colors = {
     BoxEsp = Color3.fromRGB(255, 0, 100),
-    Skeleton = Color3.fromRGB(0, 255, 150),
     Tracers = Color3.fromRGB(255, 255, 0),
     ChinaHat = Color3.fromRGB(0, 150, 255),
     TargetEsp = Color3.fromRGB(255, 80, 0)
@@ -36,16 +35,16 @@ local Values = {
     FlySpeed = 50, 
     WalkSpeed = 90,
     AimFOV = 120,
-    AimSmooth = 4, -- Чем меньше, тем резче наводка (1 — моментально)
+    AimSmooth = 4,
     AuraRange = 18,
     AuraDelay = 0.05
 }
 
 local MenuOpen = true
 local ChinaHatPart = nil
-local flyConnection, flingConnection, aimConnection, auraConnection, jumpConnection
-local flingBav, flingBp
+local flyConnection, aimConnection, auraConnection, jumpConnection
 local lastAuraTime = 0
+local activeLabels = {} -- Для обновления списка активности
 
 -- Круг FOV для Аимбота
 local FOVCircle = Drawing.new("Circle")
@@ -77,6 +76,45 @@ GridListLayout.FillDirection = Enum.FillDirection.Horizontal
 GridListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 GridListLayout.Padding = UDim.new(0, 6)
 
+-- [[ ВЕРХНИЙ ПРАВЫЙ ХАБ (FPS + ExlifonyDLC) ]] --
+local InfoHudFrame = Instance.new("Frame", ScreenGui)
+InfoHudFrame.Size = UDim2.new(0, 140, 0, 45)
+InfoHudFrame.Position = UDim2.new(1, -150, 0, 10)
+InfoHudFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
+InfoHudFrame.BackgroundTransparency = 0.2
+BorderSizePixel = 0
+Instance.new("UICorner", InfoHudFrame).CornerRadius = UDim.new(0, 5)
+
+local InfoTitle = Instance.new("TextLabel", InfoHudFrame)
+InfoTitle.Size = UDim2.new(1, -10, 0, 22)
+InfoTitle.Position = UDim2.new(0, 10, 0, 2)
+InfoTitle.BackgroundTransparency = 1
+InfoTitle.Text = "ExlifonyDLC"
+InfoTitle.TextColor3 = Color3.fromRGB(0, 150, 255)
+InfoTitle.Font = Enum.Font.SourceSansBold; InfoTitle.TextSize = 15
+InfoTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local FpsLabel = Instance.new("TextLabel", InfoHudFrame)
+FpsLabel.Size = UDim2.new(1, -10, 0, 18)
+FpsLabel.Position = UDim2.new(0, 10, 0, 22)
+FpsLabel.BackgroundTransparency = 1
+FpsLabel.Text = "FPS: --"
+FpsLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+FpsLabel.Font = Enum.Font.SourceSans; FpsLabel.TextSize = 12
+FpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Счётчик FPS
+local fpsCount = 0
+local lastFpsTime = tick()
+RunService.RenderStepped:Connect(function()
+    fpsCount = fpsCount + 1
+    if tick() - lastFpsTime >= 1 then
+        FpsLabel.Text = "FPS: " .. tostring(fpsCount)
+        fpsCount = 0
+        lastFpsTime = tick()
+    end
+end)
+
 -- [[ КНОПКА ОТКРЫТИЯ/ЗАКРЫТИЯ СВЕРХУ ПО ЦЕНТРУ ]] --
 local TopToggle = Instance.new("TextButton", ScreenGui)
 TopToggle.Size = UDim2.new(0, 120, 0, 25)
@@ -92,74 +130,6 @@ TopToggle.MouseButton1Click:Connect(function()
     MenuOpen = not MenuOpen
     MainGridFrame.Visible = MenuOpen
 end)
-
--- [[ ОКОШКО TARGET INFO / PLAYER INFO ]] --
-local TargetInfoFrame = Instance.new("Frame", ScreenGui)
-TargetInfoFrame.Size = UDim2.new(0, 160, 0, 45)
-TargetInfoFrame.Position = UDim2.new(0.5, -80, 0.8, 0)
-TargetInfoFrame.BackgroundColor3 = Color3.fromRGB(20, 15, 15)
-TargetInfoFrame.BackgroundTransparency = 0.2
-TargetInfoFrame.BorderSizePixel = 0
-TargetInfoFrame.Visible = false
-Instance.new("UICorner", TargetInfoFrame).CornerRadius = UDim.new(0, 6)
-
-local TargetAvatar = Instance.new("ImageLabel", TargetInfoFrame)
-TargetAvatar.Size = UDim2.new(0, 35, 0, 35)
-TargetAvatar.Position = UDim2.new(0, 5, 0.5, -17)
-TargetAvatar.BackgroundColor3 = Color3.fromRGB(30, 25, 25)
-TargetAvatar.BorderSizePixel = 0
-Instance.new("UICorner", TargetAvatar).CornerRadius = UDim.new(0, 4)
-
-local TargetName = Instance.new("TextLabel", TargetInfoFrame)
-TargetName.Size = UDim2.new(0, 110, 0, 16)
-TargetName.Position = UDim2.new(0, 45, 0, 4)
-TargetName.BackgroundTransparency = 1
-TargetName.Text = "Player"
-TargetName.TextColor3 = Color3.fromRGB(240, 240, 240)
-TargetName.Font = Enum.Font.SourceSansBold; TargetName.TextSize = 13
-TargetName.TextXAlignment = Enum.TextXAlignment.Left
-
-local HealthBarBg = Instance.new("Frame", TargetInfoFrame)
-HealthBarBg.Size = UDim2.new(0, 110, 0, 6)
-HealthBarBg.Position = UDim2.new(0, 45, 0, 22)
-HealthBarBg.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
-HealthBarBg.BorderSizePixel = 0
-Instance.new("UICorner", HealthBarBg).CornerRadius = UDim.new(1, 0)
-
-local HealthBarFill = Instance.new("Frame", HealthBarBg)
-HealthBarFill.Size = UDim2.new(1, 0, 1, 0)
-HealthBarFill.BackgroundColor3 = Color3.fromRGB(255, 80, 50)
-HealthBarFill.BorderSizePixel = 0
-Instance.new("UICorner", HealthBarFill).CornerRadius = UDim.new(1, 0)
-
-local HealthText = Instance.new("TextLabel", TargetInfoFrame)
-HealthText.Size = UDim2.new(0, 40, 0, 10)
-HealthText.Position = UDim2.new(0, 45, 0, 30)
-HealthText.BackgroundTransparency = 1
-HealthText.Text = "20.0"
-HealthText.TextColor3 = Color3.fromRGB(200, 200, 200)
-HealthText.Font = Enum.Font.SourceSans; HealthText.TextSize = 10
-HealthText.TextXAlignment = Enum.TextXAlignment.Left
-
--- [[ УЛУЧШЕННЫЙ ПОИСК ДЛЯ АИМБОТА И КИЛЛАУРЫ ]] --
-local function getClosestPlayerToCenter()
-    local closest, shortestDist = nil, Values.AimFOV
-    local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-    
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
-            if onScreen then
-                local dist = (Vector2.new(pos.X, pos.Y) - centerScreen).Magnitude
-                if dist < shortestDist then
-                    shortestDist = dist
-                    closest = p.Character
-                end
-            end
-        end
-    end
-    return closest
-end
 
 -- [[ КОНСТРУКТОР СТИЛЬНЫХ КОЛОНОК ]] --
 local function createCategory(name)
@@ -248,7 +218,6 @@ local function createCategory(name)
                         subBtn.Text = valConf.Title .. ": " .. tostring(Values[valName])
                         local percent = (Values[valName] - valConf.Min) / (valConf.Max - valConf.Min)
                         fill.Size = UDim2.new(math.clamp(percent, 0, 1), 0, 1, 0)
-                        fill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
                     elseif valConf.Type == "Color" then
                         subBtn.Text = valConf.Title
                         fill.Size = UDim2.new(1, 0, 1, 0)
@@ -280,13 +249,14 @@ local function createCategory(name)
             Flags[flagName] = not Flags[flagName]
             updateStyle()
             callback(Flags[flagName])
+            _G.UpdateBindActivity() -- Обновляем вкладку активных функций
         end)
         
         btn.MouseButton2Click:Connect(function()
             configFrame.Visible = not configFrame.Visible
         end)
     end
-    return addModule
+    return addModule, list
 end
 
 -- Сетка окон (6 колонок в ряд)
@@ -295,11 +265,45 @@ local movementGroup = createCategory("Movement")
 local playerGroup   = createCategory("Player")
 local renderGroup   = createCategory("Render")
 local miscGroup     = createCategory("Misc")
-local themeGroup    = createCategory("Theme")
+local _, activityList = createCategory("Activity") -- Та самая вкладка "bind activity"
 
--- [[ ОБНОВЛЕННЫЕ ФУНКЦИИ COMBAT (AIM И КИЛЛАУРА) ]] --
+-- [[ ДИНАМИЧЕСКИЙ СПИСОК АКТИВНЫХ ФУНКЦИЙ ]] --
+_G.UpdateBindActivity = function()
+    -- Очищаем старые записи
+    for _, child in pairs(activityList:GetChildren()) do
+        if child:IsA("TextLabel") then child:Destroy() end
+    end
+    -- Записываем активные
+    for name, enabled in pairs(Flags) do
+        if enabled and name ~= "HudActive" then
+            local actLabel = Instance.new("TextLabel", activityList)
+            actLabel.Size = UDim2.new(1, 0, 0, 24)
+            actLabel.BackgroundTransparency = 1
+            actLabel.Text = "  " .. name
+            actLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            actLabel.Font = Enum.Font.SourceSansSemibold; actLabel.TextSize = 12
+            actLabel.TextXAlignment = Enum.TextXAlignment.Left
+        end
+    end
+end
 
--- AIMBOT: Жестко и плавно держит камеру на цели при зажатом ПКМ
+-- [[ ПОИСК ЦЕЛИ ]] --
+local function getClosestPlayerToCenter()
+    local closest, shortestDist = nil, Values.AimFOV
+    local centerScreen = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+            local pos, onScreen = Camera:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+            if onScreen then
+                local dist = (Vector2.new(pos.X, pos.Y) - centerScreen).Magnitude
+                if dist < shortestDist then shortestDist = dist; closest = p.Character end
+            end
+        end
+    end
+    return closest
+end
+
+-- [[ НАПОЛНЕНИЕ ФУНКЦИОНАЛА ]] --
 combatGroup("Aimbot", "Aimbot", {
     AimFOV = {Title = "FOV", Type = "Slider", Min = 50, Max = 300, Step = 50},
     AimSmooth = {Title = "Smooth", Type = "Slider", Min = 1, Max = 9, Step = 2}
@@ -309,20 +313,15 @@ combatGroup("Aimbot", "Aimbot", {
         aimConnection = RunService.RenderStepped:Connect(function()
             FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
             FOVCircle.Radius = Values.AimFOV
-            
             local targetChar = getClosestPlayerToCenter()
-            -- Условие: цель найдена и игрок зажал правую кнопку мыши (или зажал палец на экране)
             if targetChar and targetChar:FindFirstChild("HumanoidRootPart") and (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)) then
-                local targetHrp = targetChar.HumanoidRootPart
-                -- Плавный расчет направления взгляда камеры прямо на HRP противника
-                local targetLook = CFrame.new(Camera.CFrame.Position, targetHrp.Position)
+                local targetLook = CFrame.new(Camera.CFrame.Position, targetChar.HumanoidRootPart.Position)
                 Camera.CFrame = Camera.CFrame:Lerp(targetLook, 1 / Values.AimSmooth)
             end
         end)
     else if aimConnection then aimConnection:Disconnect() end end
 end)
 
--- KILL AURA: Автоматически берет оружие и бьет врагов вокруг
 combatGroup("KillAura", "KillAura", {
     AuraRange = {Title = "Range", Type = "Slider", Min = 10, Max = 30, Step = 4},
     AuraDelay = {Title = "Delay", Type = "Slider", Min = 0.05, Max = 0.45, Step = 0.05}
@@ -330,29 +329,16 @@ combatGroup("KillAura", "KillAura", {
     if state then
         auraConnection = RunService.Heartbeat:Connect(function()
             if tick() - lastAuraTime < Values.AuraDelay then return end
-            
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-            
-            -- Поиск валидного оружия в инвентаре или в руках
-            local tool = char:FindFirstChildOfClass("Tool") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-            if not tool then return end
-            
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                    local targetHrp = p.Character.HumanoidRootPart
-                    local distance = (hrp.Position - targetHrp.Position).Magnitude
-                    
-                    if distance <= Values.AuraRange then
-                        -- Автоматически экипируем оружие, если оно было в рюкзаке
-                        if tool.Parent == LocalPlayer.Backpack then
-                            tool.Parent = char
+            local tool = char and (char:FindFirstChildOfClass("Tool") or LocalPlayer.Backpack:FindFirstChildOfClass("Tool"))
+            if hrp and tool then
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                        if (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude <= Values.AuraRange then
+                            if tool.Parent == LocalPlayer.Backpack then tool.Parent = char end
+                            tool:Activate(); lastAuraTime = tick(); break
                         end
-                        -- Наносим удар активацией инструмента
-                        tool:Activate()
-                        lastAuraTime = tick()
-                        break
                     end
                 end
             end
@@ -360,7 +346,6 @@ combatGroup("KillAura", "KillAura", {
     else if auraConnection then auraConnection:Disconnect() end end
 end)
 
--- [[ ОСТАЛЬНЫЕ ФУНКЦИИ ]] --
 movementGroup("Fly", "Fly", {FlySpeed = {Title = "Speed", Type = "Slider", Min = 25, Max = 125, Step = 25}}, function(state)
     if state then
         local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -413,28 +398,18 @@ miscGroup("FullBright", "FullBright", nil, function(state)
     game:GetService("Lighting").Ambient = state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(127, 127, 127)
 end)
 
-themeGroup("UI Blur", "HudActive", nil, function() end)
-
--- [[ ПОДГОТОВКА СЛЕЖЕНИЯ 3D КРУГА НАД ЦЕЛЬЮ ]] --
+-- [[ КЛЮЧ RE-RENDER ДЛЯ СЛЕЖЕНИЯ ВИЗУАЛА ]] --
 local TargetRing3D = Instance.new("CylinderHandleAdornment", ScreenGui)
-TargetRing3D.Radius = 3.2
-TargetRing3D.Height = 0.15
-TargetRing3D.AlwaysOnTop = true
-TargetRing3D.Transparency = 0.3
-TargetRing3D.ZIndex = 10
+TargetRing3D.Radius = 3.2; TargetRing3D.Height = 0.15; TargetRing3D.AlwaysOnTop = true; TargetRing3D.Transparency = 0.3
 
--- Закрытие/открытие на клавиатуре (Right Shift)
 UserInputService.InputBegan:Connect(function(input, gpe)
     if not gpe and input.KeyCode == Enum.KeyCode.RightShift then
         MenuOpen = not MenuOpen; MainGridFrame.Visible = MenuOpen
     end
 end)
 
--- [[ ОСНОВНОЙ СИНХРОННЫЙ ЦИКЛ ОБНОВЛЕНИЯ ]] --
 RunService.RenderStepped:Connect(function()
     if ChinaHatPart and Flags.ChinaHat then ChinaHatPart.Color3 = Colors.ChinaHat end
-    
-    local closestChar, shortestDistance = nil, math.huge
     local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     
     for _, player in pairs(Players:GetPlayers()) do
@@ -442,10 +417,8 @@ RunService.RenderStepped:Connect(function()
             local char = player.Character
             local pFolder = VisualsFolder:FindFirstChild(player.Name) or Instance.new("Folder", VisualsFolder)
             pFolder.Name = player.Name
-            
             local head, hrp = char:FindFirstChild("Head"), char:FindFirstChild("HumanoidRootPart")
             if head and hrp then
-                -- ESP
                 local box = pFolder:FindFirstChild("EspBox")
                 if Flags.BoxEsp then
                     if not box then box = Instance.new("SelectionBox", pFolder); box.Name = "EspBox"; box.LineThickness = 0.05 end
@@ -460,49 +433,13 @@ RunService.RenderStepped:Connect(function()
                     tracer.Size = Vector3.new(0.04, 0.04, d)
                     tracer.CFrame = CFrame.new(Vector3.new(), myHrp.CFrame:PointToObjectSpace(head.Position)) * CFrame.new(0, 0, -d/2)
                 else if tracer then tracer:Destroy() end end
-                
-                -- Расчет для Target ESP
-                if myHrp and Flags.TargetEsp and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                    local distance = (myHrp.Position - hrp.Position).Magnitude
-                    if distance < shortestDistance then shortestDistance = distance; closestChar = char end
-                end
             end
         end
     end
-    
-    -- Отрисовка Target ESP и Player Info
-    if Flags.TargetEsp and closestChar and closestChar:FindFirstChild("HumanoidRootPart") and closestChar:FindFirstChild("Humanoid") then
-        local targetHrp = closestChar.HumanoidRootPart
-        local targetHum = closestChar.Humanoid
-        local targetPlayer = Players:GetPlayerFromCharacter(closestChar)
-        
-        -- Позиция кольца (Анимация синуса по вертикали)
-        TargetRing3D.Adornee = targetHrp
-        TargetRing3D.Color3 = Colors.TargetEsp
-        local bounceOffset = math.sin(tick() * 5) * 1.3
-        TargetRing3D.CFrame = CFrame.new(0, bounceOffset, 0) * CFrame.Angles(math.rad(90), 0, 0)
-        
-        -- Выгрузка в Target Info
-        TargetName.Text = targetPlayer and targetPlayer.Name or closestChar.Name
-        HealthText.Text = string.format("%.1f", targetHum.Health)
-        local healthPercent = math.clamp(targetHum.Health / targetHum.MaxHealth, 0, 1)
-        HealthBarFill.Size = UDim2.new(healthPercent, 0, 1, 0)
-        
-        if targetPlayer then
-            TargetAvatar.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. targetPlayer.UserId .. "&width=420&height=420&format=png"
-        end
-        TargetInfoFrame.Visible = true
-    else
-        TargetRing3D.Adornee = nil
-        TargetInfoFrame.Visible = false
-    end
 end)
 
--- Физика Noclip
 RunService.Stepped:Connect(function()
     if Flags.Noclip and LocalPlayer.Character then
-        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do 
-            if part:IsA("BasePart") then part.CanCollide = false end 
-        end
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do if part:IsA("BasePart") then part.CanCollide = false end end
     end
-end) добавь новых функций, почини skeletonExli
+end)
